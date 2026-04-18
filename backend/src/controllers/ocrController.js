@@ -3,8 +3,14 @@ const Tesseract = require('tesseract.js');
 // Format attendu pour un numéro de ticket : une lettre majuscule suivie de 2 à 4 chiffres (ex. A004, B12)
 const REGEX_TICKET = /[A-Z]\d{2,4}/g;
 
-// Tesseract télécharge les données de langue au premier appel (~10 Mo).
-// Les appels suivants utilisent le cache local et sont rapides.
+// PSM 6 = SINGLE_BLOCK — optimisé pour un bloc de texte imprimé court (billet, écran)
+// Tesseract.js v5 n'exporte pas l'enum PSM directement ; on passe la valeur numérique.
+const TESSERACT_PARAMS = {
+  tessedit_pageseg_mode: '6',
+  tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
+};
+
+// Tesseract télécharge les données de langue au premier appel (~10 Mo, mis en cache ensuite).
 const lireTicket = async (req, res) => {
   const { image } = req.body;
 
@@ -12,19 +18,17 @@ const lireTicket = async (req, res) => {
     return res.status(400).json({ erreur: 'Champ "image" manquant (base64 attendu)' });
   }
 
+  let worker;
   try {
-    // Décoder le base64 en Buffer pour Tesseract
     const buffer = Buffer.from(image, 'base64');
 
-    const { data } = await Tesseract.recognize(buffer, 'eng', {
-      // Optimisé pour du texte court imprimé (billets, écrans d'affichage)
-      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_BLOCK,
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ',
-    });
+    // Utilisation du worker explicite pour pouvoir appliquer les paramètres Tesseract
+    worker = await Tesseract.createWorker('eng');
+    await worker.setParameters(TESSERACT_PARAMS);
 
+    const { data } = await worker.recognize(buffer);
     const texteComplet = data.text.trim().replace(/\n/g, ' ');
 
-    // Extraire tous les numéros correspondant au format ticket
     const correspondances = texteComplet.match(REGEX_TICKET);
     const ticket = correspondances ? correspondances[0] : null;
 
@@ -32,6 +36,8 @@ const lireTicket = async (req, res) => {
   } catch (e) {
     console.error('Erreur OCR Tesseract :', e.message);
     res.status(500).json({ erreur: "Échec de l'analyse OCR" });
+  } finally {
+    if (worker) await worker.terminate();
   }
 };
 
