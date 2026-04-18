@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FilePro — Gestion de file d'attente</title>
+  <style>
+    /* ── Variables ── */
+    :root {
+      --bleu:       #1565C0;
+      --bleu-clair: #1976D2;
+      --bleu-pale:  #E3F2FD;
+      --vert:       #2E7D32;
+      --vert-pale:  #E8F5E9;
+      --jaune:      #F57F17;
+      --jaune-pale: #FFF8E1;
+      --rouge:      #C62828;
+      --rouge-pale: #FFEBEE;
+      --gris:       #607080;
+      --fond:       #F0F4F8;
+      --blanc:      #FFFFFF;
+      --ombre:      0 2px 12px rgba(0,0,0,.08);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--fond);
+      color: #1a2535;
+      min-height: 100vh;
+    }
+
+    /* ── Écran de connexion ── */
+    #écran-connexion {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    .carte-connexion {
+      background: var(--blanc);
+      border-radius: 20px;
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: var(--ombre);
+      text-align: center;
+    }
+
+    .logo-filepro {
+      font-size: 32px;
+      font-weight: 900;
+      color: var(--bleu);
+      letter-spacing: -1px;
+    }
+
+    .logo-sous-titre {
+      font-size: 13px;
+      color: var(--gris);
+      margin-top: 4px;
+      margin-bottom: 36px;
+    }
+
+    .champ label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gris);
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      margin-bottom: 8px;
+      text-align: left;
+    }
+
+    .champ input {
+      width: 100%;
+      border: 1.5px solid #D0D8E4;
+      border-radius: 10px;
+      padding: 14px 16px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: #1a2535;
+      outline: none;
+      transition: border-color .2s;
+    }
+
+    .champ input:focus { border-color: var(--bleu); }
+
+    .erreur-connexion {
+      color: var(--rouge);
+      font-size: 13px;
+      margin-top: 10px;
+      min-height: 18px;
+    }
+
+    .btn-principal {
+      width: 100%;
+      background: var(--bleu);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 15px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 20px;
+      transition: background .2s, opacity .2s;
+    }
+
+    .btn-principal:hover  { background: var(--bleu-clair); }
+    .btn-principal:active { opacity: .85; }
+    .btn-principal:disabled { opacity: .5; cursor: default; }
+
+    /* ── Dashboard ── */
+    #dashboard { display: none; flex-direction: column; min-height: 100vh; }
+
+    /* En-tête */
+    header {
+      background: var(--bleu);
+      color: #fff;
+      padding: 0 28px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,.15);
+    }
+
+    .header-gauche { display: flex; align-items: center; gap: 14px; }
+
+    .header-logo {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+
+    .header-nom-établissement {
+      font-size: 14px;
+      opacity: .85;
+      border-left: 1px solid rgba(255,255,255,.35);
+      padding-left: 14px;
+    }
+
+    /* Pastille de rafraîchissement automatique */
+    .pastille-sync {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      opacity: .7;
+    }
+
+    .point-sync {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #69F0AE;
+    }
+
+    .point-sync.en-cours { animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: .3; }
+    }
+
+    .btn-déconnexion {
+      background: rgba(255,255,255,.15);
+      border: 1px solid rgba(255,255,255,.3);
+      color: #fff;
+      border-radius: 8px;
+      padding: 7px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background .2s;
+    }
+
+    .btn-déconnexion:hover { background: rgba(255,255,255,.25); }
+
+    /* Zone principale */
+    main {
+      flex: 1;
+      padding: 28px;
+      max-width: 1000px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* Grille haute : numéro en cours + bouton suivant */
+    .rangée-principale {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .carte {
+      background: var(--blanc);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: var(--ombre);
+    }
+
+    .carte-titre {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--gris);
+      margin-bottom: 16px;
+    }
+
+    /* Carte numéro en cours */
+    .numéro-en-cours {
+      font-size: 88px;
+      font-weight: 900;
+      color: var(--bleu);
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+
+    .numéro-en-cours.vide {
+      font-size: 28px;
+      color: #bbb;
+      font-weight: 400;
+    }
+
+    .horodatage-actuel {
+      font-size: 12px;
+      color: var(--gris);
+      margin-top: 8px;
+    }
+
+    /* Carte bouton suivant */
+    .carte-suivant {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      gap: 16px;
+    }
+
+    .btn-suivant {
+      background: var(--bleu);
+      color: #fff;
+      border: none;
+      border-radius: 14px;
+      padding: 20px 32px;
+      font-size: 22px;
+      font-weight: 800;
+      cursor: pointer;
+      width: 100%;
+      transition: background .2s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .btn-suivant:hover  { background: var(--bleu-clair); }
+    .btn-suivant:active { transform: scale(.98); }
+    .btn-suivant:disabled { opacity: .5; cursor: default; }
+
+    .btn-suivant .flèche { font-size: 28px; }
+
+    .indication-suivant {
+      font-size: 13px;
+      color: var(--gris);
+    }
+
+    /* Grille stats */
+    .rangée-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .carte-stat {
+      background: var(--blanc);
+      border-radius: 14px;
+      padding: 20px 24px;
+      box-shadow: var(--ombre);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .stat-valeur {
+      font-size: 36px;
+      font-weight: 800;
+      color: var(--bleu);
+      line-height: 1.1;
+    }
+
+    .stat-libellé {
+      font-size: 13px;
+      color: var(--gris);
+    }
+
+    /* Table de la file */
+    .carte-file { padding: 0; overflow: hidden; }
+
+    .file-entête {
+      padding: 20px 24px 16px;
+      border-bottom: 1px solid #EEF2F7;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .file-entête-titre {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1a2535;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th {
+      text-align: left;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: var(--gris);
+      padding: 10px 24px;
+      background: #FAFBFD;
+      border-bottom: 1px solid #EEF2F7;
+    }
+
+    td {
+      padding: 13px 24px;
+      font-size: 14px;
+      border-bottom: 1px solid #EEF2F7;
+      vertical-align: middle;
+    }
+
+    tr:last-child td { border-bottom: none; }
+    tr:hover td     { background: #F7F9FB; }
+
+    .numéro-ticket {
+      font-weight: 800;
+      font-size: 16px;
+      color: #1a2535;
+      letter-spacing: 1px;
+    }
+
+    /* Badge de priorité */
+    .badge-priorité {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-1 { background: var(--rouge-pale);  color: var(--rouge); }
+    .badge-2 { background: var(--rouge-pale);  color: var(--rouge); }
+    .badge-3 { background: var(--jaune-pale);  color: var(--jaune); }
+    .badge-4 { background: var(--bleu-pale);   color: var(--bleu);  }
+    .badge-5 { background: var(--vert-pale);   color: var(--vert);  }
+
+    .durée-estimée { color: var(--gris); }
+
+    .file-vide {
+      text-align: center;
+      padding: 48px 24px;
+      color: var(--gris);
+      font-size: 15px;
+    }
+
+    /* Message d'erreur global */
+    .bannière-erreur {
+      background: var(--rouge-pale);
+      color: var(--rouge);
+      border-radius: 10px;
+      padding: 12px 18px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    /* Responsive tablette */
+    @media (max-width: 640px) {
+      .rangée-principale { grid-template-columns: 1fr; }
+      .rangée-stats      { grid-template-columns: 1fr 1fr; }
+      main { padding: 16px; }
+      .numéro-en-cours { font-size: 64px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     ÉCRAN DE CONNEXION
+══════════════════════════════════════════ -->
+<div id="écran-connexion">
+  <div class="carte-connexion">
+    <div class="logo-filepro">FilePro</div>
+    <div class="logo-sous-titre">Gestion de file d'attente · MonTour</div>
+
+    <div class="champ">
+      <label for="champ-code">Code établissement</label>
+      <input
+        id="champ-code"
+        type="text"
+        placeholder="ex. HMR"
+        maxlength="10"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+    <div class="erreur-connexion" id="erreur-connexion"></div>
+    <button class="btn-principal" id="btn-connexion">Se connecter</button>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     DASHBOARD
+══════════════════════════════════════════ -->
+<div id="dashboard">
+  <header>
+    <div class="header-gauche">
+      <span class="header-logo">FilePro</span>
+      <span class="header-nom-établissement" id="header-nom-établissement">—</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      <div class="pastille-sync" id="pastille-sync">
+        <div class="point-sync" id="point-sync"></div>
+        <span id="texte-sync">Actualisation auto</span>
+      </div>
+      <button class="btn-déconnexion" id="btn-déconnexion">Déconnexion</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Bannière d'erreur -->
+    <div class="bannière-erreur" id="bannière-erreur"></div>
+
+    <!-- Numéro en cours + bouton suivant -->
+    <div class="rangée-principale">
+      <div class="carte">
+        <div class="carte-titre">Numéro en cours</div>
+        <div class="numéro-en-cours" id="numéro-en-cours">—</div>
+        <div class="horodatage-actuel" id="horodatage-actuel"></div>
+      </div>
+
+      <div class="carte carte-suivant">
+        <button class="btn-suivant" id="btn-suivant">
+          <span class="flèche">→</span>
+          Numéro suivant
+        </button>
+        <div class="indication-suivant" id="prochain-numéro">Chargement…</div>
+      </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="rangée-stats">
+      <div class="carte-stat">
+        <div class="stat-valeur" id="stat-en-attente">—</div>
+        <div class="stat-libellé">En attente</div>
+      </div>
+      <div class="carte-stat">
+        <div class="stat-valeur" id="stat-temps-moyen">—</div>
+        <div class="stat-libellé">Attente moyenne</div>
+      </div>
+      <div class="carte-stat">
+        <div class="stat-valeur" id="stat-temps-total">—</div>
+        <div class="stat-libellé">Attente totale estimée</div>
+      </div>
+    </div>
+
+    <!-- File d'attente -->
+    <div class="carte carte-file">
+      <div class="file-entête">
+        <span class="file-entête-titre">File d'attente</span>
+      </div>
+      <div id="contenu-file">
+        <div class="file-vide">Chargement de la file…</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // ── Configuration ──────────────────────────────────────────────────────────
+  const URL_API = 'https://montour-backend.onrender.com/api';
+  const INTERVALLE_RAFRAÎCHISSEMENT_MS = 10_000; // actualisation auto toutes les 10 s
+
+  // Labels lisibles pour les niveaux de priorité de triage
+  const LIBELLÉS_PRIORITÉ = {
+    1: 'Réanimation',
+    2: 'Emergent',
+    3: 'Urgent',
+    4: 'Semi-urgent',
+    5: 'Non urgent',
+  };
+
+  // ── État local ─────────────────────────────────────────────────────────────
+  let codeHopital   = null;
+  let minuterie     = null;
+
+  // ── Utilitaires ────────────────────────────────────────────────────────────
+
+  // Formate une durée en minutes sous forme lisible (ex. "1h 30 min")
+  function formaterDurée(minutes) {
+    if (minutes === 0) return '0 min';
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (h === 0) return `${m} min`;
+    if (m === 0) return `${h}h`;
+    return `${h}h ${m} min`;
+  }
+
+  // Formate une date ISO en heure locale (ex. "14:32")
+  function formaterHeure(iso) {
+    return new Date(iso).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function afficherErreur(message) {
+    const el = document.getElementById('bannière-erreur');
+    el.textContent = message;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  // ── Connexion ──────────────────────────────────────────────────────────────
+
+  async function tenterConnexion() {
+    const code = document.getElementById('champ-code').value.trim().toUpperCase();
+    if (!code) return;
+
+    const btn = document.getElementById('btn-connexion');
+    btn.disabled = true;
+    btn.textContent = 'Connexion…';
+    document.getElementById('erreur-connexion').textContent = '';
+
+    try {
+      // Vérifier que le code correspond à un hôpital connu en appelant l'API
+      const rép = await fetch(`${URL_API}/file/${code}`);
+      if (!rép.ok) {
+        const err = await rép.json();
+        throw new Error(err.erreur || 'Code établissement invalide.');
+      }
+
+      codeHopital = code;
+      const données = await rép.json();
+
+      // Afficher le dashboard
+      document.getElementById('écran-connexion').style.display = 'none';
+      document.getElementById('dashboard').style.display      = 'flex';
+      document.getElementById('header-nom-établissement').textContent = données.hopital;
+
+      appliquerDonnées(données);
+      démarrerRafraîchissement();
+
+    } catch (e) {
+      document.getElementById('erreur-connexion').textContent = e.message;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Se connecter';
+    }
+  }
+
+  // ── Récupération des données ───────────────────────────────────────────────
+
+  async function rafraîchir() {
+    // Faire clignoter la pastille pendant le chargement
+    const point = document.getElementById('point-sync');
+    point.classList.add('en-cours');
+
+    try {
+      const rép = await fetch(`${URL_API}/file/${codeHopital}`);
+      if (!rép.ok) throw new Error('Erreur réseau');
+      const données = await rép.json();
+      appliquerDonnées(données);
+    } catch (e) {
+      afficherErreur(`Erreur de connexion au backend : ${e.message}`);
+    } finally {
+      point.classList.remove('en-cours');
+    }
+  }
+
+  function démarrerRafraîchissement() {
+    if (minuterie) clearInterval(minuterie);
+    minuterie = setInterval(rafraîchir, INTERVALLE_RAFRAÎCHISSEMENT_MS);
+  }
+
+  // ── Mise à jour de l'interface ─────────────────────────────────────────────
+
+  function appliquerDonnées(données) {
+    // Numéro en cours
+    const élNuméro = document.getElementById('numéro-en-cours');
+    if (données.numéroActuel) {
+      élNuméro.textContent  = données.numéroActuel;
+      élNuméro.className    = 'numéro-en-cours';
+      document.getElementById('horodatage-actuel').textContent =
+        `Appelé à ${formaterHeure(données.misAJourÀ)}`;
+    } else {
+      élNuméro.textContent  = 'Aucun';
+      élNuméro.className    = 'numéro-en-cours vide';
+      document.getElementById('horodatage-actuel').textContent = '';
+    }
+
+    // Prochain numéro
+    const prochain = données.enAttente[0];
+    document.getElementById('prochain-numéro').textContent =
+      prochain ? `Prochain : ${prochain.numero}` : 'File vide';
+
+    // Stats
+    document.getElementById('stat-en-attente').textContent  = données.stats.totalEnAttente;
+    document.getElementById('stat-temps-moyen').textContent = formaterDurée(données.stats.tempsMoyenMinutes);
+    document.getElementById('stat-temps-total').textContent = formaterDurée(données.stats.tempsTotalMinutes);
+
+    // Désactiver le bouton suivant si la file est vide
+    document.getElementById('btn-suivant').disabled = données.enAttente.length === 0;
+
+    // Rendu de la table de file
+    rendreTableFile(données.enAttente);
+  }
+
+  function rendreTableFile(enAttente) {
+    const conteneur = document.getElementById('contenu-file');
+
+    if (enAttente.length === 0) {
+      conteneur.innerHTML = '<div class="file-vide">La file est vide — tous les patients ont été appelés.</div>';
+      return;
+    }
+
+    const lignes = enAttente.map((t, i) => {
+      const libellé = LIBELLÉS_PRIORITÉ[t.priorite] || `Priorité ${t.priorite}`;
+      return `
+        <tr>
+          <td><span class="numéro-ticket">${t.numero}</span></td>
+          <td><span class="badge-priorité badge-${t.priorite}">${libellé}</span></td>
+          <td class="durée-estimée">~${t.duréeEstimée} min</td>
+          <td class="durée-estimée">${i + 1}</td>
+        </tr>`;
+    }).join('');
+
+    conteneur.innerHTML = `
+      <table>
+        <thead>
+          <tr>
+            <th>Ticket</th>
+            <th>Priorité</th>
+            <th>Attente estimée</th>
+            <th>Position</th>
+          </tr>
+        </thead>
+        <tbody>${lignes}</tbody>
+      </table>`;
+  }
+
+  // ── Action : numéro suivant ────────────────────────────────────────────────
+
+  async function appellerSuivant() {
+    const btn = document.getElementById('btn-suivant');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="flèche">⏳</span> Appel en cours…';
+
+    try {
+      const rép = await fetch(`${URL_API}/file/${codeHopital}/suivant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!rép.ok) {
+        const err = await rép.json();
+        throw new Error(err.erreur || 'Erreur lors de l\'appel du numéro suivant.');
+      }
+      const données = await rép.json();
+
+      // Mettre à jour l'interface avec la réponse directe (sans attendre le rafraîchissement auto)
+      appliquerDonnées({
+        numéroActuel: données.numéroActuel,
+        enAttente:    données.enAttente,
+        stats:        données.stats,
+        misAJourÀ:    données.misAJourÀ,
+      });
+
+    } catch (e) {
+      afficherErreur(e.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<span class="flèche">→</span> Numéro suivant';
+    }
+  }
+
+  // ── Déconnexion ────────────────────────────────────────────────────────────
+
+  function déconnecter() {
+    clearInterval(minuterie);
+    codeHopital = null;
+    document.getElementById('dashboard').style.display        = 'none';
+    document.getElementById('écran-connexion').style.display  = 'flex';
+    document.getElementById('champ-code').value               = '';
+    document.getElementById('erreur-connexion').textContent   = '';
+  }
+
+  // ── Événements ─────────────────────────────────────────────────────────────
+
+  document.getElementById('btn-connexion').addEventListener('click', tenterConnexion);
+  document.getElementById('btn-suivant').addEventListener('click', appellerSuivant);
+  document.getElementById('btn-déconnexion').addEventListener('click', déconnecter);
+
+  // Permettre la touche Entrée sur le champ de code
+  document.getElementById('champ-code').addEventListener('keydown', e => {
+    if (e.key === 'Enter') tenterConnexion();
+  });
+</script>
+</body>
+</html>
