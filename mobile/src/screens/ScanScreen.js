@@ -11,15 +11,16 @@ import {
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import { envoyerImageOCR } from '../services/api';
+import { envoyerImageOCR, mettreÀJourNuméroActuel } from '../services/api';
 
 // Note : expo-barcode-scanner est déprécié depuis SDK 51.
-// La lecture de codes-barres est désormais intégrée directement dans expo-camera via onBarcodeScanned.
-// Pour l'OCR de texte libre (numéros imprimés sur billets ou écrans), on capture une photo
-// et on la transmet au backend qui utilise Tesseract.js.
+// L'OCR de texte libre passe par expo-camera + backend Tesseract.js.
 
 // Modèle attendu pour un numéro de ticket québécois : une lettre suivie de 2 à 4 chiffres
 const REGEX_TICKET = /[A-Z]\d{2,4}/;
+
+// Hôpital codé en dur — à passer en paramètre de navigation quand le sélecteur sera ajouté
+const HOPITAL_DÉMO = 'HMR';
 
 const ScanScreen = ({ navigation }) => {
   const [permission, demanderPermission] = useCameraPermissions();
@@ -29,6 +30,8 @@ const ScanScreen = ({ navigation }) => {
   const [ticketDétecté, setTicketDétecté] = useState('');
   const [saisieMannuelle, setSaisieManuelle] = useState('');
   const [analyse, setAnalyse] = useState(false);
+  const [envoi, setEnvoi] = useState(false);       // partage en cours vers le backend
+  const [partagé, setPartagé] = useState(false);   // partage réussi
   const [erreur, setErreur] = useState(null);
 
   // --- Gestion des permissions ---
@@ -50,16 +53,16 @@ const ScanScreen = ({ navigation }) => {
     );
   }
 
-  // --- Capture et analyse ---
+  // --- Capture et analyse OCR ---
 
   const capturerEtAnalyser = async () => {
     if (!refCaméra.current) return;
     setErreur(null);
     setTicketDétecté('');
     setSaisieManuelle('');
+    setPartagé(false);
 
     try {
-      // Capturer en haute résolution
       const photo = await refCaméra.current.takePictureAsync({ quality: 1, base64: false });
 
       // Réduire la taille avant envoi pour limiter le poids du payload
@@ -73,13 +76,11 @@ const ScanScreen = ({ navigation }) => {
       setAnalyse(true);
 
       const résultat = await envoyerImageOCR(imageOptimisée.base64);
-
-      // Vérifier que le ticket détecté correspond au format attendu
       const correspond = résultat.ticket && REGEX_TICKET.test(résultat.ticket);
+
       if (correspond) {
         setTicketDétecté(résultat.ticket);
       } else {
-        // OCR n'a pas trouvé de numéro valide — proposer la saisie manuelle
         setSaisieManuelle('');
         setErreur('Aucun numéro de ticket reconnu. Corrigez ou saisissez-le manuellement.');
       }
@@ -95,29 +96,50 @@ const ScanScreen = ({ navigation }) => {
     setTicketDétecté('');
     setSaisieManuelle('');
     setErreur(null);
+    setPartagé(false);
   };
 
-  const confirmerTicket = () => {
+  // Confirmer le numéro : le partager en temps réel comme numéro actuel de l'hôpital,
+  // puis revenir à l'accueil pour que l'utilisateur entre son propre ticket.
+  const confirmerTicket = async () => {
     const ticket = (ticketDétecté || saisieMannuelle).trim().toUpperCase();
     if (!ticket) {
       Alert.alert('Ticket manquant', 'Veuillez entrer ou scanner un numéro de ticket.');
       return;
     }
-    // Retourner le ticket confirmé à l'écran d'accueil
-    navigation.navigate('Accueil', { ticketPrédéfini: ticket });
+
+    setEnvoi(true);
+    setErreur(null);
+    try {
+      // Diffuser le numéro scanné comme numéro actuellement affiché à l'hôpital.
+      // Cela recalcule les positions de tous les utilisateurs en attente.
+      await mettreÀJourNuméroActuel(HOPITAL_DÉMO, ticket);
+      setPartagé(true);
+
+      // Courte pause pour que l'utilisateur voit la confirmation avant de naviguer
+      setTimeout(() => {
+        navigation.navigate('Accueil');
+      }, 1200);
+    } catch (e) {
+      // En cas d'échec du partage, on navigue quand même pour ne pas bloquer l'utilisateur
+      setErreur(`Numéro non partagé : ${e.message}`);
+      setTimeout(() => {
+        navigation.navigate('Accueil');
+      }, 2000);
+    } finally {
+      setEnvoi(false);
+    }
   };
 
-  // --- Affichage ---
+  // --- Affichage : état A — aperçu caméra ---
 
-  // État A : aperçu caméra (pas encore de photo)
   if (!photoUri) {
     return (
       <View style={styles.racine}>
         <CameraView ref={refCaméra} style={styles.caméra} facing="back">
-          {/* Cadre de visée pour guider l'utilisateur */}
           <View style={styles.surcoucheCaméra}>
             <Text style={styles.consigne}>
-              Pointez la caméra vers votre numéro de ticket
+              Pointez l'écran de l'hôpital montrant le numéro en cours
             </Text>
             <View style={styles.cadreVise} />
             <TouchableOpacity style={styles.boutonCapture} onPress={capturerEtAnalyser}>
@@ -129,23 +151,35 @@ const ScanScreen = ({ navigation }) => {
     );
   }
 
-  // État B : photo capturée — afficher résultat et options
+  // --- Affichage : état B — photo capturée, résultat et confirmation ---
+
   return (
     <View style={styles.racine}>
       <Image source={{ uri: photoUri }} style={styles.aperçuPhoto} resizeMode="cover" />
 
       <View style={styles.panneau}>
-        {analyse ? (
+        {analyse || envoi ? (
           <>
             <ActivityIndicator size="large" color="#1565C0" />
-            <Text style={styles.texteAnalyse}>Lecture du ticket en cours…</Text>
+            <Text style={styles.texteAnalyse}>
+              {analyse ? 'Lecture du ticket en cours…' : 'Partage en cours…'}
+            </Text>
           </>
+        ) : partagé ? (
+          // Confirmation visuelle avant la redirection automatique
+          <View style={styles.conteneurPartagé}>
+            <Text style={styles.icôneSuccès}>✅</Text>
+            <Text style={styles.textePartagé}>Numéro partagé avec tous les utilisateurs</Text>
+          </View>
         ) : (
           <>
             {ticketDétecté ? (
               <>
-                <Text style={styles.étiquetteRésultat}>Ticket détecté</Text>
+                <Text style={styles.étiquetteRésultat}>Numéro détecté à l'écran</Text>
                 <Text style={styles.ticketDétecté}>{ticketDétecté}</Text>
+                <Text style={styles.sousTitreRésultat}>
+                  Ce numéro sera partagé en temps réel avec tous les patients en attente.
+                </Text>
               </>
             ) : (
               <>
@@ -168,7 +202,7 @@ const ScanScreen = ({ navigation }) => {
                 <Text style={styles.texteBoutonSecondaire}>Réessayer</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.boutonPrincipal} onPress={confirmerTicket}>
-                <Text style={styles.texteBouton}>Confirmer</Text>
+                <Text style={styles.texteBouton}>Confirmer et partager</Text>
               </TouchableOpacity>
             </View>
           </>
@@ -217,6 +251,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     overflow: 'hidden',
     textAlign: 'center',
+    marginHorizontal: 24,
   },
   cadreVise: {
     width: 220,
@@ -224,7 +259,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
     borderRadius: 12,
-    // Coins colorés pour guider la mise au point
     shadowColor: '#1565C0',
     shadowOpacity: 0.8,
     shadowRadius: 8,
@@ -260,7 +294,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     padding: 28,
     alignItems: 'center',
-    minHeight: 220,
+    minHeight: 240,
     justifyContent: 'center',
   },
   texteAnalyse: {
@@ -268,19 +302,39 @@ const styles = StyleSheet.create({
     color: '#555',
     fontSize: 14,
   },
+  conteneurPartagé: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  icôneSuccès: {
+    fontSize: 48,
+  },
+  textePartagé: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#2E7D32',
+    textAlign: 'center',
+  },
   étiquetteRésultat: {
     fontSize: 13,
     color: '#888',
     textTransform: 'uppercase',
     letterSpacing: 1,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   ticketDétecté: {
     fontSize: 56,
     fontWeight: '900',
     color: '#1565C0',
     letterSpacing: 4,
-    marginBottom: 24,
+    marginBottom: 4,
+  },
+  sousTitreRésultat: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+    marginBottom: 20,
+    paddingHorizontal: 8,
   },
   texteErreur: {
     color: '#C62828',
@@ -325,7 +379,7 @@ const styles = StyleSheet.create({
   texteBouton: {
     color: '#fff',
     fontWeight: '700',
-    fontSize: 15,
+    fontSize: 14,
   },
   texteBoutonSecondaire: {
     color: '#1565C0',
