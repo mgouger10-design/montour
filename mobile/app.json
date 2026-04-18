@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "MonTour",
+    "slug": "montour",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#1565C0"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.montour.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MonTour utilise la caméra pour lire votre numéro de ticket automatiquement."
+      }
+    },
+    "android": {
+      "package": "com.montour.app",
+      "permissions": ["android.permission.CAMERA"]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "MonTour utilise la caméra pour lire votre numéro de ticket automatiquement."
+        }
+      ]
+    ]
+  }
+}
