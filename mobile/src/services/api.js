@@ -1,5 +1,5 @@
 // URL de base de l'API backend (Railway)
-const URL_BASE = 'https://montour-production.up.railway.app/api';
+const URL_BASE = 'https://montour-backend.onrender.com/api';
 
 // Interroge le backend pour obtenir la position dans la file
 export const obtenirPositionFile = async (hopital, numeroTicket) => {

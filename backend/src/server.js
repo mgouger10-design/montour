@@ -4,7 +4,7 @@ const routesFile = require('./routes/file');
 const routesOCR = require('./routes/ocr');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT;
 
 app.use(cors());
 // Limite augmentée à 10 Mo pour accepter les images base64 envoyées par le mobile
